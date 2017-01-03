@@ -1,4 +1,4 @@
-# DirectoryCrawler v1.0
+# Directory Crawler v1.0
 
 Directory Crawler is a lightweight console application built in .NET C# to crawl and list out all accessible directories and sub-directories within an assigned target directory, then output the result of directory list into a text file.
 

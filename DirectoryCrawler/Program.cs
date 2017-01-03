@@ -18,7 +18,7 @@ namespace DirectoryCrawler
 
         static void Main(string[] args)
         {
-            Console.Title = "DirectoryCrawler " + Assembly.GetExecutingAssembly().GetName().Version;
+            Console.Title = "Directory Crawler " + Assembly.GetExecutingAssembly().GetName().Version.ToString(2);
             ConsoleHelper.FixEncoding();
 
             Console.WriteLine(Console.Title);
@@ -74,7 +74,7 @@ namespace DirectoryCrawler
             ConsoleHelper.WriteLine(string.Format("  Total failed to access   : {0}", TotalFailedToAccess), ConsoleColor.Red);
 
             Console.WriteLine();
-            Console.WriteLine("Creating output file...");
+            Console.WriteLine("Writing result to output file...");
             string exMsg = "";
             string outputFilePath = "";
             bool isOutputFileCreated = false;
