@@ -11,169 +11,125 @@ using Unclassified.Util;
 
 namespace DirectoryCrawler
 {
-    class Program
+    internal class Program
     {
-        static List<string> DirectoryPathList;
-        static int TotalFailedToAccess;
+        private static string targetdir;
+        private static int notAuthorizedCount;
+        private static int accessibleCount;
 
-        static void Main(string[] args)
+        private static void Main(string[] args)
         {
             Console.Title = "Directory Crawler " + Assembly.GetExecutingAssembly().GetName().Version.ToString(2);
             ConsoleHelper.FixEncoding();
 
-            Console.WriteLine(Console.Title);
-
-            Block1:
-            Console.WriteLine();
-            Console.Write("Enter directory path to scan: ");
-            string insertPath = Console.ReadLine();
-
-            if (insertPath.Length == 0)
+            if (args.Length > 0)
             {
-                ConsoleHelper.Write("[ERROR]", ConsoleColor.Black, ConsoleColor.Red);
-                Console.Write(" ");
-                ConsoleHelper.Write("Directory path is empty.", ConsoleColor.Red);
-                Console.WriteLine();
-                goto Block1;
-            }
-            else if (!Directory.Exists(insertPath))
-            {
-                ConsoleHelper.Write("[ERROR]", ConsoleColor.Black, ConsoleColor.Red);
-                Console.Write(" ");
-                ConsoleHelper.Write("Invalid directory path.", ConsoleColor.Red);
-                Console.WriteLine();
-                goto Block1;
-            }
-
-            Console.Clear();
-            Console.WriteLine(Console.Title);
-
-            Console.WriteLine();
-            ConsoleHelper.Write("--> ", ConsoleColor.Green);
-            Console.Write(insertPath);
-            Console.WriteLine();
-
-            Console.WriteLine();
-            Console.WriteLine("Crawling will be started in 5 seconds...");
-            Thread.Sleep(5000);
-
-            Stopwatch stopwatch = new Stopwatch();
-            stopwatch.Start();
-
-            Console.WriteLine();
-
-            // Start the Task
-            Task t = GetDirectoriesTask(insertPath);
-
-            // Wait for the task to complete
-            t.Wait();
-
-            Console.WriteLine();
-            Console.WriteLine("Crawling Statistics:");
-            ConsoleHelper.WriteLine(string.Format("  Total directories found  : {0}", DirectoryPathList.Count), ConsoleColor.Green);
-            ConsoleHelper.WriteLine(string.Format("  Total failed to access   : {0}", TotalFailedToAccess), ConsoleColor.Red);
-
-            Console.WriteLine();
-            Console.WriteLine("Writing result to output file...");
-            string exMsg = "";
-            string outputFilePath = "";
-            bool isOutputFileCreated = false;
-
-            try
-            {
-                string dirName = new DirectoryInfo(insertPath).Name;
-                dirName = dirName.Replace(" ", "_");
-                if (dirName.Length > 10)
-                    dirName = dirName.Substring(0, 10);
-
-                string filename = dirName + "_" + DateTime.Now.ToString("yyyyMMddHHmmss") + ".txt";
-                outputFilePath = AppDomain.CurrentDomain.BaseDirectory + filename;
-
-                foreach (var directoryPath in DirectoryPathList)
-                    isOutputFileCreated = WriteToFile(outputFilePath, directoryPath, out exMsg);
-            }
-            catch (Exception ex)
-            {
-                isOutputFileCreated = false;
-                exMsg = ex.ToString();
-            }
-
-            if (isOutputFileCreated)
-            {
-                ConsoleHelper.Write("[SUCCESS]", ConsoleColor.Black, ConsoleColor.Green);
-                Console.Write(" ");
-                ConsoleHelper.Write(outputFilePath, ConsoleColor.Green);
-                Console.WriteLine();
+                foreach (var arg in args)
+                {
+                    if (arg.Contains("/targetdir="))
+                    {
+                        string[] extract = arg.Split('=');
+                        targetdir = extract[1];
+                        goto START;
+                    }
+                }
             }
             else
             {
-                ConsoleHelper.Write("[ERROR]", ConsoleColor.Black, ConsoleColor.Red);
-                Console.Write(" ");
-                ConsoleHelper.Write("Failed to create the output file: " + exMsg, ConsoleColor.Red);
                 Console.WriteLine();
+                ConsoleHelper.WriteLine("    ==========================", ConsoleColor.Green);
+                ConsoleHelper.WriteLine(string.Format("    | Directory Crawler v{0} |", Assembly.GetExecutingAssembly().GetName().Version.ToString(2)), ConsoleColor.Green);
+                ConsoleHelper.WriteLine("    ==========================", ConsoleColor.Green);
+                Console.WriteLine();
+                Console.WriteLine("    Please run this program with the following command-line:");
+                Console.WriteLine();
+                ConsoleHelper.WriteWrapped("      .\\DirectoryCrawler.exe /targetdir=<PATH>", true);
+                Console.WriteLine();
+                ConsoleHelper.WriteWrapped("      NOTE: Please quote the long path or path that contains spacing.", true);
+                Console.WriteLine();
+                ConsoleHelper.Wait();
+                Environment.Exit(0);
             }
 
-            stopwatch.Stop();
+            START:
+            if (!Directory.Exists(targetdir))
+            {
+                ConsoleHelper.WriteLine("ERROR: targetdir does not exist.", ConsoleColor.Red);
+                Environment.Exit(1);
+            }
 
-            Console.WriteLine();
-            Console.WriteLine("Time elapsed: {0}", stopwatch.Elapsed);
+            // Generate filename
+            string dirName = new DirectoryInfo(targetdir).Name.Replace(" ", "_");
+            if (dirName.Length > 10)
+                dirName = dirName.Substring(0, 10);
 
-            Console.WriteLine();
-            ConsoleHelper.Wait();
-        }
+            string filename = dirName + "_" + DateTime.Now.ToString("yyyyMMddHHmmss");
 
-        #region Tasker
-        static Task GetDirectoriesTask(string targetPath, string searchPattern = "*", SearchOption searchOption = SearchOption.AllDirectories)
-        {
-            return Task.Factory.StartNew(() => {
-                DirectoryPathList = GetDirectories(targetPath, searchPattern, searchOption);
+            accessibleCount = 0;
+            notAuthorizedCount = 0;
+            List<string> accessibleDirs = new List<string>();
+
+            Stopwatch sw1 = new Stopwatch();
+            Stopwatch sw2 = new Stopwatch();
+
+            ConsoleHelper.WriteLine("    Start crawling accessible directories...", ConsoleColor.Green);
+            sw1.Start();
+            Task t1 = Task.Factory.StartNew(() =>
+            {
+                accessibleDirs = GetDirs(targetdir, "*", SearchOption.AllDirectories);
             });
+            t1.Wait();
+            sw1.Stop();
+            ConsoleHelper.WriteLine("    Crawling complete.", ConsoleColor.Green);
+            Console.WriteLine();
+            ConsoleHelper.WriteLine("    Writing all accessible directories to output file...", ConsoleColor.Green);
+            sw2.Start();
+            Task t2 = Task.Factory.StartNew(() =>
+            {
+                TextWriter tw = new StreamWriter(filename + "_OUTPUT.txt");
+                foreach (var dir in accessibleDirs)
+                {
+                    tw.WriteLine(dir);
+                    accessibleCount++;
+                }
+                tw.Close();
+            });
+            t2.Wait();
+            sw2.Stop();
+            ConsoleHelper.WriteLine("    OUTPUT FILENAME: " + filename + "_OUTPUT.txt", ConsoleColor.Cyan);
+
+            // Output text
+            string content = string.Format("TARGETDIR: {0}{1}CRAWLTIME: {2} ms{3}WRITETIME: {4} ms{5}DIRCOUNT: {6}{7}NOTAUTHORIZED_DIRCOUNT: {8}",
+                targetdir, Environment.NewLine,
+                sw1.ElapsedMilliseconds, Environment.NewLine,
+                sw2.ElapsedMilliseconds, Environment.NewLine,
+                accessibleCount, Environment.NewLine,
+                notAuthorizedCount);
+            File.WriteAllText(filename + "_INFO.txt", content);
+            Console.WriteLine();
+            ConsoleHelper.WriteLine("    CRAWLING INFO", ConsoleColor.Yellow);
+            ConsoleHelper.WriteLine("    =============", ConsoleColor.Yellow);
+            Console.WriteLine("    Crawling time taken: {0} ms", sw1.ElapsedMilliseconds);
+            Console.WriteLine("    Writing to output file time taken: {0} ms", sw2.ElapsedMilliseconds);
+            Console.WriteLine("    Accessible directory count: {0}", accessibleCount);
+            Console.WriteLine("    Inaccessible directry count: {0}", notAuthorizedCount);
         }
-        #endregion
 
-        #region Spinner
-        public static int spinnerPos = 0;
-        public delegate void UpdateProgressDelegate(float pctComplete, int complete = 0, int total = 0);
-        public static UpdateProgressDelegate UpdateProgress = (float pctComplete, int complete, int total) => {
-            if (pctComplete >= 100f)
-            {
-                ConsoleHelper.Write("\rCrawling Complete!".PadRight(Console.BufferWidth), ConsoleColor.Black, ConsoleColor.Green);
-                Console.Write(Environment.NewLine);
-            }
-            else
-            {
-                char[] spinner = new char[] { '-', '\\', '|', '/' };
-                ConsoleHelper.Write(string.Format("\rCrawling directories... ({0}/{1}) {2} - {3:0.00}%", complete, total, spinner[spinnerPos], pctComplete).PadRight(Console.BufferWidth), ConsoleColor.White, ConsoleColor.Red);
-                spinnerPos = (spinnerPos >= 3) ? 0 : spinnerPos + 1;
-            }
-        };
-        #endregion
-
-        #region Directory Listing Methods
-        public static List<string> GetDirectories(string path, string searchPattern = "*",
-            SearchOption searchOption = SearchOption.TopDirectoryOnly)
+        private static List<string> GetDirs(string path, string searchPattern = "*", SearchOption searchOption = SearchOption.TopDirectoryOnly)
         {
-            // Show the starting progress
-            UpdateProgress(0f);
-
             if (searchOption == SearchOption.TopDirectoryOnly)
                 return Directory.GetDirectories(path, searchPattern).ToList();
 
-            var directories = new List<string>(GetDirectories(path, searchPattern));
-
-            for (var i = 0; i < directories.Count; i++)
+            var dirs = new List<string>(GetDirs(path, searchPattern));
+            for (var i = 0; i < dirs.Count; i++)
             {
-                directories.AddRange(GetDirectories(directories[i], searchPattern));
-
-                // Update the progress
-                float pctComplete = (((float) (i + 1) / (float) directories.Count) * 100f);
-                UpdateProgress(pctComplete, (i + 1), directories.Count);
+                dirs.AddRange(GetDirs(dirs[i], searchPattern));
+                Console.WriteLine(dirs[i]);
             }
-
-            return directories;
+            return dirs;
         }
 
-        private static List<string> GetDirectories(string path, string searchPattern)
+        private static List<string> GetDirs(string path, string searchPattern)
         {
             try
             {
@@ -181,40 +137,9 @@ namespace DirectoryCrawler
             }
             catch (UnauthorizedAccessException)
             {
-                TotalFailedToAccess++;
-                return new List<string>();
-            }
-            catch (PathTooLongException)
-            {
-                TotalFailedToAccess++;
+                notAuthorizedCount++;
                 return new List<string>();
             }
         }
-        #endregion
-
-        #region WriteToFile Method
-        static bool WriteToFile(string filePath, string text, out string exMsg)
-        {
-            if (!File.Exists(filePath))
-            {
-                try
-                {
-                    File.WriteAllText(filePath, text);
-                }
-                catch (Exception ex)
-                {
-                    exMsg = ex.ToString();
-                    return false;
-                }
-            }
-
-            using (StreamWriter file = new StreamWriter(filePath, true, Encoding.ASCII))
-            {
-                file.WriteLine(text);
-                exMsg = "";
-                return true;
-            }
-        }
-        #endregion
     }
 }
